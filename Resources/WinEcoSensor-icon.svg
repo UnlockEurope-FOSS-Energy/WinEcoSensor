@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- WinEcoSensor Application Icon
+     SPDX-License-Identifier: EUPL-1.2
+     
+     This SVG can be converted to ICO format using tools like:
+     - https://convertio.co/svg-ico/
+     - https://www.aconvert.com/icon/svg-to-ico/
+     - ImageMagick: convert -background none icon.svg -define icon:auto-resize=256,128,64,48,32,16 WinEcoSensor.ico
+     
+     The icon represents:
+     - Green leaf: Eco-friendly energy monitoring
+     - Lightning bolt: Energy/power
+     - Monitor shape: Computer/PC focus
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="#1a5f2a"/>
+  
+  <!-- Inner circle -->
+  <circle cx="128" cy="128" r="100" fill="#228b22"/>
+  
+  <!-- Stylized leaf shape -->
+  <path d="M128 40 
+           C 80 60, 50 100, 50 150 
+           C 50 190, 80 220, 128 220 
+           C 176 220, 206 190, 206 150 
+           C 206 100, 176 60, 128 40 Z" 
+        fill="#32cd32" 
+        stroke="#1a5f2a" 
+        stroke-width="3"/>
+  
+  <!-- Leaf vein (center) -->
+  <path d="M128 60 L128 200" 
+        stroke="#228b22" 
+        stroke-width="6" 
+        stroke-linecap="round"/>
+  
+  <!-- Leaf veins (side) -->
+  <path d="M128 90 L90 110" stroke="#228b22" stroke-width="4" stroke-linecap="round"/>
+  <path d="M128 90 L166 110" stroke="#228b22" stroke-width="4" stroke-linecap="round"/>
+  <path d="M128 130 L80 155" stroke="#228b22" stroke-width="4" stroke-linecap="round"/>
+  <path d="M128 130 L176 155" stroke="#228b22" stroke-width="4" stroke-linecap="round"/>
+  <path d="M128 170 L95 185" stroke="#228b22" stroke-width="4" stroke-linecap="round"/>
+  <path d="M128 170 L161 185" stroke="#228b22" stroke-width="4" stroke-linecap="round"/>
+  
+  <!-- Lightning bolt (energy symbol) -->
+  <path d="M145 70 L125 115 L145 115 L115 170 L135 125 L115 125 L145 70 Z" 
+        fill="#ffd700" 
+        stroke="#daa520" 
+        stroke-width="2"/>
+  
+  <!-- Subtle monitor outline at bottom -->
+  <rect x="88" y="195" width="80" height="4" rx="2" fill="#1a5f2a"/>
+  <rect x="118" y="199" width="20" height="10" rx="1" fill="#1a5f2a"/>
+</svg>

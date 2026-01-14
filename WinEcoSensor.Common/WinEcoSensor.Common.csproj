@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}</ProjectGuid>
+    <OutputType>Library</OutputType>
+    <RootNamespace>WinEcoSensor.Common</RootNamespace>
+    <AssemblyName>WinEcoSensor.Common</AssemblyName>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Management" />
+    <Reference Include="System.Runtime.Serialization" />
+    <Reference Include="System.ServiceProcess" />
+    <Reference Include="System.Xml" />
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="Models\HardwareInfo.cs" />
+    <Compile Include="Models\MonitorInfo.cs" />
+    <Compile Include="Models\DiskInfo.cs" />
+    <Compile Include="Models\UserActivityInfo.cs" />
+    <Compile Include="Models\EnergyState.cs" />
+    <Compile Include="Models\CloudEventMessage.cs" />
+    <Compile Include="Models\SensorConfiguration.cs" />
+    <Compile Include="Models\EprelMapping.cs" />
+    <Compile Include="Monitoring\HardwareMonitor.cs" />
+    <Compile Include="Monitoring\CpuMonitor.cs" />
+    <Compile Include="Monitoring\UserActivityMonitor.cs" />
+    <Compile Include="Monitoring\DisplayMonitor.cs" />
+    <Compile Include="Monitoring\RemoteSessionMonitor.cs" />
+    <Compile Include="Utilities\EnergyCalculator.cs" />
+    <Compile Include="Communication\CloudEventBuilder.cs" />
+    <Compile Include="Communication\BackendClient.cs" />
+    <Compile Include="Configuration\ConfigurationManager.cs" />
+    <Compile Include="Utilities\WmiHelper.cs" />
+    <Compile Include="Utilities\Logger.cs" />
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>
