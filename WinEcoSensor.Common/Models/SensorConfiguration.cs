@@ -99,7 +99,7 @@ namespace WinEcoSensor.Common.Models
 
         public SensorConfiguration()
         {
-            BackendUrl = "http://localhost:8080/api/events";
+            BackendUrl = "http://localhost:8080/event/batch";
             ReportIntervalSeconds = 60;
             HardwareReportIntervalSeconds = 3600;
             AutoStart = true;

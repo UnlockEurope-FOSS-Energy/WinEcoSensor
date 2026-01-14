@@ -24,8 +24,11 @@ namespace WinEcoSensor.Common.Communication
         // Default timeout in seconds
         private const int DefaultTimeoutSeconds = 30;
 
-        // CloudEvents content type
-        private const string CloudEventsContentType = "application/cloudevents+json";
+        // CloudEvents content type (JSON for FastAPI compatibility)
+        private const string CloudEventsContentType = "application/json";
+
+        // Event endpoint path
+        private const string EventEndpoint = "/event";
 
         // Retry settings
         private const int MaxRetries = 3;
@@ -137,7 +140,9 @@ namespace WinEcoSensor.Common.Communication
                 return false;
             }
 
-            return SendWithRetry(_backendUrl, json);
+            // Append /event endpoint to backend URL
+            string eventUrl = _backendUrl + EventEndpoint;
+            return SendWithRetry(eventUrl, json);
         }
 
         /// <summary>
@@ -212,9 +217,6 @@ namespace WinEcoSensor.Common.Communication
             request.Timeout = _timeoutSeconds * 1000;
             request.ReadWriteTimeout = _timeoutSeconds * 1000;
             request.UserAgent = "WinEcoSensor/1.0";
-
-            // Add CloudEvents headers
-            request.Headers.Add("ce-specversion", "1.0");
 
             return request;
         }
@@ -484,7 +486,7 @@ namespace WinEcoSensor.Common.Communication
         }
 
         /// <summary>
-        /// Test connection to backend
+        /// Test connection to backend using /health endpoint
         /// </summary>
         /// <returns>Connection test result</returns>
         public ConnectionTestResult TestConnection()
@@ -504,8 +506,11 @@ namespace WinEcoSensor.Common.Communication
 
             try
             {
-                var request = (HttpWebRequest)WebRequest.Create(_backendUrl);
-                request.Method = "HEAD";
+                // Use /health endpoint for connection test
+                string healthUrl = _backendUrl + "/health";
+                var request = (HttpWebRequest)WebRequest.Create(healthUrl);
+                request.Method = "GET";
+                request.Accept = "application/json";
                 request.Timeout = 10000;
 
                 var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -516,6 +521,18 @@ namespace WinEcoSensor.Common.Communication
                     result.Success = true;
                     result.StatusCode = (int)response.StatusCode;
                     result.ResponseTimeMs = stopwatch.ElapsedMilliseconds;
+
+                    // Read health response
+                    try
+                    {
+                        using (var stream = response.GetResponseStream())
+                        using (var reader = new StreamReader(stream))
+                        {
+                            string body = reader.ReadToEnd();
+                            Logger.Debug($"Health check response: {body}");
+                        }
+                    }
+                    catch { }
                 }
             }
             catch (WebException ex)

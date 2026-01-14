@@ -396,11 +396,11 @@ namespace WinEcoSensor.Common.Communication
         }
 
         /// <summary>
-        /// Generate unique event ID
+        /// Generate unique event ID (UUID format required by KurrentDB)
         /// </summary>
         private string GenerateEventId()
         {
-            return $"{_hardwareId}-{DateTime.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid().ToString("N").Substring(0, 8)}";
+            return Guid.NewGuid().ToString();
         }
 
         /// <summary>
