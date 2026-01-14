@@ -63,7 +63,7 @@ namespace WinEcoSensor.Common.Utilities
         /// <summary>
         /// Execute a WMI query in a specific namespace
         /// </summary>
-        public static List<Dictionary<string, object>> ExecuteQuery(string namespacePath, string query, params string[] properties)
+        public static List<Dictionary<string, object>> ExecuteQueryInNamespace(string namespacePath, string query, params string[] properties)
         {
             var results = new List<Dictionary<string, object>>();
 
