@@ -30,13 +30,6 @@ KURRENTDB_PORT = os.getenv("KURRENTDB_PORT", "")
 KURRENTDB_STREAM_NAME = os.getenv("KURRENTDB_STREAM_NAME", "EnergyEventStream")
 KURRENTDB_EVENT_TYPE = os.getenv("KURRENTDB_EVENT_TYPE", "CloudEvent")
 
-# ---------------------------------------------------------------------------
-# KurrentDB / EventStoreDB connection data
-# ---------------------------------------------------------------------------
-KURRENTDB_USERNAME = "admin"
-KURRENTDB_PASSWORD = "3Oe73=#&C?j3"
-KURRENTDB_HOST = "94.130.218.54"
-KURRENTDB_PORT = "2113"
 
 # --------------------------------------------------------------------------
 # Statistics Tracker
