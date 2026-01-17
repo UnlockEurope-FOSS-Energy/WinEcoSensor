@@ -1,6 +1,6 @@
 // ============================================================================
 // WinEcoSensor - Windows Eco Energy Sensor
-// Copyright (c) 2024 Unlock Europe - FOSS Energy Initiative
+// Copyright (c) 2026 Unlock Europe - FOSS Energy Initiative
 // Licensed under the European Union Public License (EUPL-1.2)
 // ============================================================================
 
@@ -13,7 +13,7 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyConfiguration("")]
 [assembly: AssemblyCompany("Unlock Europe - FOSS Energy Initiative")]
 [assembly: AssemblyProduct("WinEcoSensor")]
-[assembly: AssemblyCopyright("Copyright © 2024 Unlock Europe - FOSS Energy Initiative")]
+[assembly: AssemblyCopyright("Copyright (c) 2026 Unlock Europe - FOSS Energy Initiative")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -25,5 +25,5 @@ using System.Runtime.InteropServices;
 
 // Version information
 // Major.Minor.Build.Revision
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("0.9.1.2")]
+[assembly: AssemblyFileVersion("0.9.1.2")]

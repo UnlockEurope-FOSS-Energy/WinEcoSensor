@@ -1,10 +1,11 @@
 // ============================================================================
 // WinEcoSensor - Windows Eco Energy Sensor
-// Copyright (c) 2024 Unlock Europe - FOSS Energy Initiative
+// Copyright (c) 2026 Unlock Europe - FOSS Energy Initiative
 // Licensed under the European Union Public License (EUPL-1.2)
 // ============================================================================
 
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.ServiceProcess;
 using System.Timers;
@@ -46,10 +47,22 @@ namespace WinEcoSensor.TrayApp
         private DisplayMonitor _displayMonitor;
         private ConfigurationManager _configManager;
         private SensorConfiguration _configuration;
+        private HardwareMonitor _hardwareMonitor;
+        private CpuMonitor _cpuMonitor;
+        private EnergyCalculator _energyCalculator;
+        private HardwareInfo _hardwareInfo;
+        private EnergyState _currentEnergyState;
 
         // Forms
         private SettingsForm _settingsForm;
         private StatusForm _statusForm;
+        private EnergyChartForm _chartForm;
+        private QrCodeForm _qrCodeForm;
+        private FeedbackForm _feedbackForm;
+        private UserDataForm _userDataForm;
+
+        // Application icon for all windows
+        private Icon _appIcon;
 
         /// <summary>
         /// Current service status
@@ -70,14 +83,21 @@ namespace WinEcoSensor.TrayApp
                 // Initialize monitoring
                 _activityMonitor = new UserActivityMonitor();
                 _displayMonitor = new DisplayMonitor();
+                _hardwareMonitor = new HardwareMonitor();
+                _hardwareInfo = _hardwareMonitor.CollectHardwareInfo();
+                _cpuMonitor = new CpuMonitor(_hardwareInfo.CpuTdpWatts);
+                _energyCalculator = new EnergyCalculator();
 
                 // Create context menu
                 _contextMenu = CreateContextMenu();
 
+                // Create app icon (used for tray and all forms)
+                _appIcon = CreateDefaultIcon();
+
                 // Create notify icon
                 _notifyIcon = new NotifyIcon
                 {
-                    Icon = CreateDefaultIcon(),
+                    Icon = _appIcon,
                     Text = "WinEcoSensor - Energy Monitor",
                     ContextMenuStrip = _contextMenu,
                     Visible = true
@@ -216,6 +236,22 @@ namespace WinEcoSensor.TrayApp
             // Show status window
             var statusItem = new ToolStripMenuItem("Show Status Window", null, OnShowStatusClick);
             menu.Items.Add(statusItem);
+
+            // Show energy chart
+            var chartItem = new ToolStripMenuItem("Energy Chart", null, OnShowChartClick);
+            menu.Items.Add(chartItem);
+
+            // Show QR code
+            var qrCodeItem = new ToolStripMenuItem("Device QR Code", null, OnShowQrCodeClick);
+            menu.Items.Add(qrCodeItem);
+
+            // User Profile
+            var userDataItem = new ToolStripMenuItem("User Profile...", null, OnShowUserDataClick);
+            menu.Items.Add(userDataItem);
+
+            // Feedback
+            var feedbackItem = new ToolStripMenuItem("Send Feedback...", null, OnShowFeedbackClick);
+            menu.Items.Add(feedbackItem);
 
             // Settings
             var settingsItem = new ToolStripMenuItem("Settings...", null, OnSettingsClick);
@@ -373,12 +409,20 @@ namespace WinEcoSensor.TrayApp
                 // Update activity monitor
                 _activityMonitor.Update();
                 _displayMonitor.Update();
+                _cpuMonitor?.Update();
 
-                // First activity of day
+                // Calculate energy state
+                _currentEnergyState = _energyCalculator?.CalculateCurrentState(
+                    _cpuMonitor,
+                    _displayMonitor,
+                    _hardwareInfo);
+
+                // First activity of day (stored as UTC, displayed as local time)
                 var firstActivity = _activityMonitor.GetFirstActivityToday();
                 if (firstActivity.HasValue)
                 {
-                    _firstActivityItem.Text = $"First activity: {firstActivity.Value.ToLocalTime():HH:mm:ss}";
+                    var localTime = firstActivity.Value.ToLocalTime();
+                    _firstActivityItem.Text = $"First user activity today recorded at {localTime:HH:mm:ss}";
                 }
                 else
                 {
@@ -406,14 +450,21 @@ namespace WinEcoSensor.TrayApp
                     MonitorPowerState.Suspend => "Suspended",
                     _ => "Unknown"
                 };
-                
+
                 _displayStateItem.Text = $"Display: {stateText} (On: {FormatDuration(displayStats.OnTimeToday)}, " +
                                         $"Off: {FormatDuration(displayStats.OffTimeToday)}, " +
                                         $"Idle: {FormatDuration(displayStats.IdleTimeToday)})";
 
-                // Estimated energy consumption
-                var powerWatts = _displayMonitor.TotalPowerWatts;
-                _energyConsumptionItem.Text = $"Display Power: {powerWatts:F1} W ({_displayMonitor.Monitors.Count} monitor(s))";
+                // Estimated energy consumption (show total power if available)
+                if (_currentEnergyState != null)
+                {
+                    _energyConsumptionItem.Text = $"Total Power: {_currentEnergyState.TotalPowerWatts:F1} W";
+                }
+                else
+                {
+                    var powerWatts = _displayMonitor.TotalPowerWatts;
+                    _energyConsumptionItem.Text = $"Display Power: {powerWatts:F1} W ({_displayMonitor.Monitors.Count} monitor(s))";
+                }
             }
             catch (Exception ex)
             {
@@ -481,103 +532,73 @@ namespace WinEcoSensor.TrayApp
 
         private void OnStartServiceClick(object sender, EventArgs e)
         {
-            try
-            {
-                using (var controller = new ServiceController(ServiceName))
-                {
-                    if (controller.Status == ServiceControllerStatus.Stopped)
-                    {
-                        controller.Start();
-                        controller.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
-                        Logger.Info("Service started via tray app");
-                        UpdateStatus();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Error starting service", ex);
-                MessageBox.Show(
-                    $"Failed to start service:\n\n{ex.Message}",
-                    "WinEcoSensor",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
+            ExecuteServiceCommand("start");
         }
 
         private void OnStopServiceClick(object sender, EventArgs e)
         {
-            try
-            {
-                using (var controller = new ServiceController(ServiceName))
-                {
-                    if (controller.Status == ServiceControllerStatus.Running ||
-                        controller.Status == ServiceControllerStatus.Paused)
-                    {
-                        controller.Stop();
-                        controller.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30));
-                        Logger.Info("Service stopped via tray app");
-                        UpdateStatus();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Error stopping service", ex);
-                MessageBox.Show(
-                    $"Failed to stop service:\n\n{ex.Message}",
-                    "WinEcoSensor",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
+            ExecuteServiceCommand("stop");
         }
 
         private void OnPauseServiceClick(object sender, EventArgs e)
         {
-            try
-            {
-                using (var controller = new ServiceController(ServiceName))
-                {
-                    if (controller.Status == ServiceControllerStatus.Running && controller.CanPauseAndContinue)
-                    {
-                        controller.Pause();
-                        controller.WaitForStatus(ServiceControllerStatus.Paused, TimeSpan.FromSeconds(30));
-                        Logger.Info("Service paused via tray app");
-                        UpdateStatus();
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error("Error pausing service", ex);
-                MessageBox.Show(
-                    $"Failed to pause service:\n\n{ex.Message}",
-                    "WinEcoSensor",
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-            }
+            ExecuteServiceCommand("pause");
         }
 
         private void OnResumeServiceClick(object sender, EventArgs e)
         {
+            ExecuteServiceCommand("continue");
+        }
+
+        /// <summary>
+        /// Execute a service control command with elevation (UAC prompt)
+        /// </summary>
+        /// <param name="command">The sc.exe command: start, stop, pause, continue</param>
+        private void ExecuteServiceCommand(string command)
+        {
             try
             {
-                using (var controller = new ServiceController(ServiceName))
+                var startInfo = new ProcessStartInfo
                 {
-                    if (controller.Status == ServiceControllerStatus.Paused)
+                    FileName = "sc.exe",
+                    Arguments = $"{command} {ServiceName}",
+                    Verb = "runas", // Request elevation
+                    UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    CreateNoWindow = true
+                };
+
+                using (var process = Process.Start(startInfo))
+                {
+                    if (process != null)
                     {
-                        controller.Continue();
-                        controller.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
-                        Logger.Info("Service resumed via tray app");
-                        UpdateStatus();
+                        process.WaitForExit(30000);
+
+                        if (process.ExitCode == 0)
+                        {
+                            Logger.Info($"Service {command} command executed successfully via tray app");
+                        }
+                        else
+                        {
+                            Logger.Warning($"Service {command} command returned exit code: {process.ExitCode}");
+                        }
                     }
                 }
+
+                // Wait a moment for the service status to update
+                System.Threading.Thread.Sleep(1000);
+                UpdateStatus();
+            }
+            catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+            {
+                // User cancelled UAC prompt
+                Logger.Debug("User cancelled UAC elevation for service control");
             }
             catch (Exception ex)
             {
-                Logger.Error("Error resuming service", ex);
+                Logger.Error($"Error executing service {command} command", ex);
                 MessageBox.Show(
-                    $"Failed to resume service:\n\n{ex.Message}",
+                    $"Failed to {command} service:\n\n{ex.Message}",
                     "WinEcoSensor",
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
@@ -599,6 +620,10 @@ namespace WinEcoSensor.TrayApp
             if (_statusForm == null || _statusForm.IsDisposed)
             {
                 _statusForm = new StatusForm();
+                if (_appIcon != null)
+                {
+                    _statusForm.Icon = _appIcon;
+                }
             }
 
             if (!_statusForm.Visible)
@@ -610,11 +635,109 @@ namespace WinEcoSensor.TrayApp
             _statusForm.BringToFront();
         }
 
+        private void OnShowChartClick(object sender, EventArgs e)
+        {
+            ShowChartForm();
+        }
+
+        private void ShowChartForm()
+        {
+            if (_chartForm == null || _chartForm.IsDisposed)
+            {
+                _chartForm = new EnergyChartForm();
+                _chartForm.SetDataSource(GetCurrentEnergyState);
+                _chartForm.SetIcon(_appIcon);
+            }
+
+            if (!_chartForm.Visible)
+            {
+                _chartForm.Show();
+            }
+
+            _chartForm.Activate();
+            _chartForm.BringToFront();
+        }
+
+        private EnergyState GetCurrentEnergyState()
+        {
+            return _currentEnergyState;
+        }
+
+        private void OnShowQrCodeClick(object sender, EventArgs e)
+        {
+            ShowQrCodeForm();
+        }
+
+        private void ShowQrCodeForm()
+        {
+            if (_qrCodeForm == null || _qrCodeForm.IsDisposed)
+            {
+                _qrCodeForm = new QrCodeForm();
+                _qrCodeForm.SetIcon(_appIcon);
+            }
+
+            if (!_qrCodeForm.Visible)
+            {
+                _qrCodeForm.Show();
+            }
+
+            _qrCodeForm.Activate();
+            _qrCodeForm.BringToFront();
+        }
+
+        private void OnShowUserDataClick(object sender, EventArgs e)
+        {
+            ShowUserDataForm();
+        }
+
+        private void ShowUserDataForm()
+        {
+            if (_userDataForm == null || _userDataForm.IsDisposed)
+            {
+                _userDataForm = new UserDataForm();
+                _userDataForm.SetIcon(_appIcon);
+            }
+
+            if (!_userDataForm.Visible)
+            {
+                _userDataForm.Show();
+            }
+
+            _userDataForm.Activate();
+            _userDataForm.BringToFront();
+        }
+
+        private void OnShowFeedbackClick(object sender, EventArgs e)
+        {
+            ShowFeedbackForm();
+        }
+
+        private void ShowFeedbackForm()
+        {
+            if (_feedbackForm == null || _feedbackForm.IsDisposed)
+            {
+                _feedbackForm = new FeedbackForm();
+                _feedbackForm.SetIcon(_appIcon);
+            }
+
+            if (!_feedbackForm.Visible)
+            {
+                _feedbackForm.Show();
+            }
+
+            _feedbackForm.Activate();
+            _feedbackForm.BringToFront();
+        }
+
         private void OnSettingsClick(object sender, EventArgs e)
         {
             if (_settingsForm == null || _settingsForm.IsDisposed)
             {
                 _settingsForm = new SettingsForm();
+                if (_appIcon != null)
+                {
+                    _settingsForm.Icon = _appIcon;
+                }
             }
 
             if (_settingsForm.ShowDialog() == DialogResult.OK)
@@ -627,18 +750,14 @@ namespace WinEcoSensor.TrayApp
 
         private void OnAboutClick(object sender, EventArgs e)
         {
-            var version = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version;
-            MessageBox.Show(
-                $"WinEcoSensor - Windows Eco Energy Sensor\n\n" +
-                $"Version {version}\n\n" +
-                $"Monitors user presence, display activity, and energy-relevant states\n" +
-                $"on Windows systems to support energy-efficient operations.\n\n" +
-                $"Copyright © 2024 Unlock Europe\n" +
-                $"FOSS Energy Initiative\n\n" +
-                $"Licensed under the European Union Public License (EUPL-1.2)",
-                "About WinEcoSensor",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            using (var aboutForm = new AboutForm())
+            {
+                if (_appIcon != null)
+                {
+                    aboutForm.Icon = _appIcon;
+                }
+                aboutForm.ShowDialog();
+            }
         }
 
         private void OnExitClick(object sender, EventArgs e)
@@ -678,9 +797,14 @@ namespace WinEcoSensor.TrayApp
 
                     _activityMonitor?.Dispose();
                     _displayMonitor?.Dispose();
+                    _cpuMonitor?.Dispose();
 
                     _settingsForm?.Dispose();
                     _statusForm?.Dispose();
+                    _chartForm?.Dispose();
+                    _qrCodeForm?.Dispose();
+                    _feedbackForm?.Dispose();
+                    _userDataForm?.Dispose();
 
                     Logger.Info("Tray application context disposed");
                 }

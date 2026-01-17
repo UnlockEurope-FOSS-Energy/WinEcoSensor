@@ -1,6 +1,6 @@
 // ============================================================================
 // WinEcoSensor - Windows Eco Energy Sensor
-// Copyright (c) 2024 Unlock Europe - FOSS Energy Initiative
+// Copyright (c) 2026 Unlock Europe - FOSS Energy Initiative
 // Licensed under the European Union Public License (EUPL-1.2)
 // ============================================================================
 
@@ -42,6 +42,49 @@ namespace WinEcoSensor.Common.Monitoring
         [DllImport("user32.dll")]
         private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder lpString, int nMaxCount);
 
+        // WTS API for querying real user sessions (works from services)
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        private static extern bool WTSEnumerateSessions(IntPtr hServer, int Reserved, int Version, ref IntPtr ppSessionInfo, ref int pCount);
+
+        [DllImport("wtsapi32.dll")]
+        private static extern void WTSFreeMemory(IntPtr pMemory);
+
+        [DllImport("wtsapi32.dll", SetLastError = true)]
+        private static extern bool WTSQuerySessionInformation(IntPtr hServer, int sessionId, WTS_INFO_CLASS wtsInfoClass, out IntPtr ppBuffer, out int pBytesReturned);
+
+        private static readonly IntPtr WTS_CURRENT_SERVER_HANDLE = IntPtr.Zero;
+
+        private enum WTS_INFO_CLASS
+        {
+            WTSUserName = 5,
+            WTSDomainName = 7,
+            WTSConnectState = 8,
+            WTSClientName = 10,
+            WTSSessionInfo = 24
+        }
+
+        private enum WTS_CONNECTSTATE_CLASS
+        {
+            WTSActive,
+            WTSConnected,
+            WTSConnectQuery,
+            WTSShadow,
+            WTSDisconnected,
+            WTSIdle,
+            WTSListen,
+            WTSReset,
+            WTSDown,
+            WTSInit
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct WTS_SESSION_INFO
+        {
+            public int SessionId;
+            public IntPtr pWinStationName;
+            public WTS_CONNECTSTATE_CLASS State;
+        }
+
         private int _idleThresholdMinutes;
         private DateTime? _firstActivityToday;
         private DateTime _todayDate;
@@ -80,27 +123,33 @@ namespace WinEcoSensor.Common.Monitoring
             {
                 // Get basic client info
                 activity.ClientName = Environment.MachineName;
-                activity.DomainName = Environment.UserDomainName;
-                activity.LoggedInUser = Environment.UserName;
-                activity.IsUserLoggedIn = !string.IsNullOrEmpty(activity.LoggedInUser);
+
+                // Get real user session info using WTS API (works from services)
+                GetActiveUserSession(activity);
 
                 // Get system boot time
                 activity.SystemBootTimeUtc = GetSystemBootTime();
 
-                // Get idle time
-                var idleTime = GetIdleTime();
-                activity.LastInputActivityUtc = DateTime.UtcNow - idleTime;
-                activity.IdleTime = idleTime;
-                activity.IsIdle = idleTime.TotalMinutes >= _idleThresholdMinutes;
+                // Get idle time - only works if we're in user context
+                // For services, we estimate based on session state
+                if (_isRunningAsService)
+                {
+                    // When running as service, use session state for idle detection
+                    activity.IsIdle = activity.SessionState == SessionState.Disconnected ||
+                                      activity.SessionState == SessionState.Idle;
+                    activity.IdleTime = activity.IsIdle ? TimeSpan.FromMinutes(_idleThresholdMinutes + 1) : TimeSpan.Zero;
+                    activity.LastInputActivityUtc = activity.IsIdle ? DateTime.UtcNow.AddMinutes(-_idleThresholdMinutes - 1) : DateTime.UtcNow;
+                }
+                else
+                {
+                    var idleTime = GetIdleTime();
+                    activity.LastInputActivityUtc = DateTime.UtcNow - idleTime;
+                    activity.IdleTime = idleTime;
+                    activity.IsIdle = idleTime.TotalMinutes >= _idleThresholdMinutes;
+                }
 
-                // Check screen saver
+                // Check screen saver (may not work from service)
                 activity.IsScreenSaverActive = IsScreenSaverRunning();
-
-                // Check workstation lock
-                activity.IsWorkstationLocked = IsWorkstationLocked();
-
-                // Determine session state
-                activity.SessionState = DetermineSessionState(activity);
 
                 // Track first activity of the day
                 TrackFirstActivityToday(activity);
@@ -119,6 +168,148 @@ namespace WinEcoSensor.Common.Monitoring
             }
 
             return activity;
+        }
+
+        /// <summary>
+        /// Get active user session info using WTS API
+        /// </summary>
+        private void GetActiveUserSession(UserActivityInfo activity)
+        {
+            IntPtr pSessionInfo = IntPtr.Zero;
+            int sessionCount = 0;
+
+            Logger.Debug($"GetActiveUserSession: Running as service = {_isRunningAsService}, Current SessionId = {Process.GetCurrentProcess().SessionId}");
+
+            try
+            {
+                if (WTSEnumerateSessions(WTS_CURRENT_SERVER_HANDLE, 0, 1, ref pSessionInfo, ref sessionCount))
+                {
+                    Logger.Debug($"WTSEnumerateSessions: Found {sessionCount} sessions");
+                    int sessionInfoSize = Marshal.SizeOf(typeof(WTS_SESSION_INFO));
+                    IntPtr current = pSessionInfo;
+
+                    for (int i = 0; i < sessionCount; i++)
+                    {
+                        WTS_SESSION_INFO sessionInfo = (WTS_SESSION_INFO)Marshal.PtrToStructure(current, typeof(WTS_SESSION_INFO));
+                        current = IntPtr.Add(current, sessionInfoSize);
+
+                        string stationName = sessionInfo.pWinStationName != IntPtr.Zero
+                            ? Marshal.PtrToStringAnsi(sessionInfo.pWinStationName)
+                            : "null";
+                        Logger.Debug($"Session {sessionInfo.SessionId}: Station={stationName}, State={sessionInfo.State}");
+
+                        // Skip Session 0 (services) and console session without user
+                        if (sessionInfo.SessionId == 0)
+                            continue;
+
+                        // Get username for this session
+                        string userName = GetSessionString(sessionInfo.SessionId, WTS_INFO_CLASS.WTSUserName);
+                        Logger.Debug($"Session {sessionInfo.SessionId}: UserName={userName ?? "(null)"}");
+
+                        if (string.IsNullOrEmpty(userName))
+                            continue;
+
+                        // Found an active user session
+                        activity.LoggedInUser = userName;
+                        activity.DomainName = GetSessionString(sessionInfo.SessionId, WTS_INFO_CLASS.WTSDomainName);
+                        activity.IsUserLoggedIn = true;
+
+                        // Map WTS state to our session state
+                        switch (sessionInfo.State)
+                        {
+                            case WTS_CONNECTSTATE_CLASS.WTSActive:
+                                activity.SessionState = SessionState.Active;
+                                activity.IsWorkstationLocked = false;
+                                break;
+                            case WTS_CONNECTSTATE_CLASS.WTSDisconnected:
+                                activity.SessionState = SessionState.Disconnected;
+                                activity.IsWorkstationLocked = true;
+                                break;
+                            case WTS_CONNECTSTATE_CLASS.WTSConnected:
+                                activity.SessionState = SessionState.Connected;
+                                activity.IsWorkstationLocked = false;
+                                break;
+                            case WTS_CONNECTSTATE_CLASS.WTSIdle:
+                                activity.SessionState = SessionState.Idle;
+                                activity.IsWorkstationLocked = false;
+                                break;
+                            default:
+                                activity.SessionState = SessionState.Unknown;
+                                break;
+                        }
+
+                        Logger.Debug($"Found user session: {userName} (Session {sessionInfo.SessionId}, State: {sessionInfo.State})");
+                        return; // Found active user, exit
+                    }
+                }
+
+                // No active user session found
+                activity.IsUserLoggedIn = false;
+                activity.SessionState = SessionState.Disconnected;
+                Logger.Debug("No active user session found");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error("Error querying user sessions", ex);
+                // Fallback to Environment values
+                activity.DomainName = Environment.UserDomainName;
+                activity.LoggedInUser = Environment.UserName;
+                activity.IsUserLoggedIn = !string.IsNullOrEmpty(activity.LoggedInUser) &&
+                                          activity.LoggedInUser.ToUpperInvariant() != "SYSTEM";
+            }
+            finally
+            {
+                if (pSessionInfo != IntPtr.Zero)
+                {
+                    WTSFreeMemory(pSessionInfo);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Get string value from WTS session
+        /// </summary>
+        private string GetSessionString(int sessionId, WTS_INFO_CLASS infoClass)
+        {
+            IntPtr buffer = IntPtr.Zero;
+            int bytesReturned = 0;
+
+            try
+            {
+                if (WTSQuerySessionInformation(WTS_CURRENT_SERVER_HANDLE, sessionId, infoClass, out buffer, out bytesReturned))
+                {
+                    return Marshal.PtrToStringAnsi(buffer);
+                }
+            }
+            catch { }
+            finally
+            {
+                if (buffer != IntPtr.Zero)
+                {
+                    WTSFreeMemory(buffer);
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Check if running as a Windows Service
+        /// </summary>
+        private bool _isRunningAsService
+        {
+            get
+            {
+                try
+                {
+                    // Services run in session 0
+                    return Process.GetCurrentProcess().SessionId == 0;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
         }
 
         /// <summary>
@@ -214,25 +405,6 @@ namespace WinEcoSensor.Common.Monitoring
             }
         }
 
-        /// <summary>
-        /// Determine session state based on activity info
-        /// </summary>
-        private SessionState DetermineSessionState(UserActivityInfo activity)
-        {
-            if (!activity.IsUserLoggedIn)
-                return SessionState.Disconnected;
-
-            if (activity.IsWorkstationLocked)
-                return SessionState.Idle;
-
-            if (activity.IsScreenSaverActive)
-                return SessionState.Idle;
-
-            if (activity.IsIdle)
-                return SessionState.Idle;
-
-            return SessionState.Active;
-        }
 
         /// <summary>
         /// Track first user activity of the day
@@ -247,13 +419,15 @@ namespace WinEcoSensor.Common.Monitoring
             }
 
             // Record first activity when user is active
-            if (!_firstActivityToday.HasValue && 
-                activity.IsUserLoggedIn && 
-                !activity.IsIdle && 
+            if (!_firstActivityToday.HasValue &&
+                activity.IsUserLoggedIn &&
+                !activity.IsIdle &&
                 !activity.IsWorkstationLocked)
             {
-                _firstActivityToday = DateTime.UtcNow;
-                Logger.Info($"First user activity today recorded at {_firstActivityToday.Value:HH:mm:ss}");
+                // Store as UTC with explicit Kind for proper conversion later
+                _firstActivityToday = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                // Log in local time for readability
+                Logger.Info($"First user activity today recorded at {_firstActivityToday.Value.ToLocalTime():HH:mm:ss} (local time)");
             }
 
             activity.FirstActivityTodayUtc = _firstActivityToday;
@@ -312,8 +486,9 @@ namespace WinEcoSensor.Common.Monitoring
         {
             if (!_firstActivityToday.HasValue)
             {
-                _firstActivityToday = DateTime.UtcNow;
-                Logger.Info($"First user activity recorded at {_firstActivityToday.Value:HH:mm:ss}");
+                // Store as UTC with explicit Kind for proper conversion later
+                _firstActivityToday = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Utc);
+                Logger.Info($"First user activity recorded at {_firstActivityToday.Value.ToLocalTime():HH:mm:ss} (local time)");
             }
         }
 

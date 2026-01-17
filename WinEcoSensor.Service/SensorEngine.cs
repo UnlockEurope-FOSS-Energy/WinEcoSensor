@@ -1,6 +1,6 @@
 // ============================================================================
 // WinEcoSensor - Windows Eco Energy Sensor
-// Copyright (c) 2024 Unlock Europe - FOSS Energy Initiative
+// Copyright (c) 2026 Unlock Europe - FOSS Energy Initiative
 // Licensed under the European Union Public License (EUPL-1.2)
 // ============================================================================
 
@@ -159,7 +159,7 @@ namespace WinEcoSensor.Service
                 // Update user activity
                 if (_userActivityMonitor != null)
                 {
-                    _userActivity = _userActivityMonitor.GetCurrentActivity();
+                    _userActivity = _userActivityMonitor.Update();
 
                     // Check for remote sessions
                     if (_remoteSessionMonitor != null)

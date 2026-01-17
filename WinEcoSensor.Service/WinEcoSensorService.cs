@@ -1,6 +1,6 @@
 // ============================================================================
 // WinEcoSensor - Windows Eco Energy Sensor
-// Copyright (c) 2024 Unlock Europe - FOSS Energy Initiative
+// Copyright (c) 2026 Unlock Europe - FOSS Energy Initiative
 // Licensed under the European Union Public License (EUPL-1.2)
 // ============================================================================
 
@@ -59,6 +59,9 @@ namespace WinEcoSensor.Service
         /// <param name="args">Start arguments</param>
         public void StartService(string[] args)
         {
+            var startupStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            var serviceStartTime = DateTime.Now;
+
             try
             {
                 // Load configuration
@@ -79,6 +82,7 @@ namespace WinEcoSensor.Service
                 Logger.Info("==============================================");
                 Logger.Info("WinEcoSensor Service Starting");
                 Logger.Info($"Version: {GetServiceVersion()}");
+                Logger.Info($"Service Start Time: {serviceStartTime:yyyy-MM-dd HH:mm:ss.fff}");
                 Logger.Info("==============================================");
 
                 // Create and initialize sensor engine
@@ -97,7 +101,8 @@ namespace WinEcoSensor.Service
                 };
                 _serviceThread.Start();
 
-                Logger.Info("WinEcoSensor Service started successfully");
+                startupStopwatch.Stop();
+                Logger.Info($"WinEcoSensor Service started successfully (startup time: {startupStopwatch.ElapsedMilliseconds} ms)");
             }
             catch (Exception ex)
             {

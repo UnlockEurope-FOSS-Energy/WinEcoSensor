@@ -1,6 +1,6 @@
 // ============================================================================
 // WinEcoSensor - Windows Eco Energy Sensor
-// Copyright (c) 2024 Unlock Europe - FOSS Energy Initiative
+// Copyright (c) 2026 Unlock Europe - FOSS Energy Initiative
 // Licensed under the European Union Public License (EUPL-1.2)
 // ============================================================================
 
@@ -122,6 +122,12 @@ namespace WinEcoSensor.Common.Communication
         /// <returns>True if sent successfully</returns>
         public bool SendEvent(CloudEventMessage message)
         {
+            if (_disposed)
+            {
+                Logger.Warning("Cannot send event: BackendClient has been disposed");
+                return false;
+            }
+
             if (message == null)
             {
                 Logger.Warning("Cannot send null message");
@@ -496,6 +502,13 @@ namespace WinEcoSensor.Common.Communication
                 Url = _backendUrl,
                 TestedAt = DateTime.UtcNow
             };
+
+            if (_disposed)
+            {
+                result.Success = false;
+                result.ErrorMessage = "BackendClient has been disposed";
+                return result;
+            }
 
             if (string.IsNullOrEmpty(_backendUrl))
             {

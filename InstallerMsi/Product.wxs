@@ -1,0 +1,84 @@
+﻿<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="WinEcoSensor Service"
+    Manufacturer="UnlockEurope-FOSS-Energy"
+    Version="1.0.0"
+    UpgradeCode="{3FE98ACA-DB63-4880-BA4A-E576FAB15B88}"
+    Compressed="yes"
+    Scope="perMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="INSTALLFOLDER" Name="WinEcoSensor">
+
+        <!-- Service EXE + Service registration -->
+        <Component Id="CmpServiceExe" Guid="*">
+          <File Id="SvcExe" Source="$(var.ServiceBin)\WinEcoSensor.Service.exe" KeyPath="yes" />
+
+          <ServiceInstall
+            Id="SvcInstall"
+            Name="WinEcoSensor"
+            DisplayName="WinEcoSensor Service"
+            Description="Monitors Computer Energy Consumption and related info"
+            Start="auto"
+            Type="ownProcess"
+            ErrorControl="normal" />
+
+          <!-- Empfehlung: NICHT im MSI starten -->
+          <ServiceControl
+            Id="SvcControl"
+            Name="WinEcoSensor"
+            Stop="both"
+            Remove="uninstall"
+            Wait="yes" />
+        </Component>
+
+        <!-- Service dependency: versioned DLL must be its own component -->
+        <Component Id="CmpCommonDll" Guid="*">
+          <File Id="CommonDll" Source="$(var.ServiceBin)\WinEcoSensor.Common.dll" KeyPath="yes" />
+        </Component>
+
+        <!-- Service config (unversioned) -->
+        <Component Id="CmpServiceConfig" Guid="*">
+          <File Id="SvcConfig" Source="$(var.ServiceBin)\WinEcoSensor.Service.exe.config" KeyPath="yes" />
+        </Component>
+
+        <!-- TrayApp -->
+        <Component Id="CmpTray" Guid="*">
+          <File Id="TrayExe" Source="$(var.TrayBin)\WinEcoSensor.TrayApp.exe" KeyPath="yes" />
+
+          <Shortcut Id="TrayStartup"
+                    Directory="StartupFolder"
+                    Name="WinEcoSensor"
+                    Target="[INSTALLFOLDER]WinEcoSensor.TrayApp.exe"
+                    WorkingDirectory="INSTALLFOLDER"
+                    Advertise="no" />
+        </Component>
+
+      </Directory>
+    </StandardDirectory>
+
+    <Feature Id="Main" Level="1">
+      <ComponentRef Id="CmpServiceExe" />
+      <ComponentRef Id="CmpCommonDll" />
+      <ComponentRef Id="CmpServiceConfig" />
+      <ComponentRef Id="CmpTray" />
+    </Feature>
+
+    <!-- TrayApp after install (runs for the installing user) -->
+    <CustomAction Id="LaunchTray"
+                  FileRef="TrayExe"
+                  ExeCommand=""
+                  Return="asyncNoWait"
+                  Impersonate="yes" />
+
+    <InstallExecuteSequence>
+      <Custom Action="LaunchTray"
+              After="InstallFinalize"
+              Condition="NOT Installed AND (REMOVE &lt;&gt; &quot;ALL&quot;)" />
+    </InstallExecuteSequence>
+
+  </Package>
+</Wix>

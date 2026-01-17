@@ -1,6 +1,6 @@
 // ============================================================================
 // WinEcoSensor - Windows Eco Energy Sensor
-// Copyright (c) 2024 Unlock Europe - FOSS Energy Initiative
+// Copyright (c) 2026 Unlock Europe - FOSS Energy Initiative
 // Licensed under the European Union Public License (EUPL-1.2)
 // ============================================================================
 
@@ -62,11 +62,12 @@ namespace WinEcoSensor.Common.Monitoring
         public DisplayMonitor()
         {
             _monitors = new List<MonitorInfo>();
-            _currentPowerState = MonitorPowerState.Unknown;
+            _currentPowerState = MonitorPowerState.On; // Assume display is on at start
             _lastStateChangeTime = DateTime.UtcNow;
             _todayDate = DateTime.Today;
             _lastUpdateTime = DateTime.UtcNow;
             SystemEvents.PowerModeChanged += OnPowerModeChanged;
+            SystemEvents.SessionSwitch += OnSessionSwitch;
             DetectMonitors();
         }
 
@@ -177,6 +178,41 @@ namespace WinEcoSensor.Common.Monitoring
             if (previousState != _currentPowerState) { _lastStateChangeTime = DateTime.UtcNow; }
         }
 
+        private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+        {
+            var previousState = _currentPowerState;
+            switch (e.Reason)
+            {
+                case SessionSwitchReason.SessionLock:
+                    _currentPowerState = MonitorPowerState.Off;
+                    Logger.Info("Display power state: Session locked (Off)");
+                    break;
+                case SessionSwitchReason.SessionUnlock:
+                    _currentPowerState = MonitorPowerState.On;
+                    Logger.Info("Display power state: Session unlocked (On)");
+                    break;
+                case SessionSwitchReason.ConsoleDisconnect:
+                case SessionSwitchReason.RemoteDisconnect:
+                    _currentPowerState = MonitorPowerState.Off;
+                    Logger.Info("Display power state: Disconnected (Off)");
+                    break;
+                case SessionSwitchReason.ConsoleConnect:
+                case SessionSwitchReason.RemoteConnect:
+                    _currentPowerState = MonitorPowerState.On;
+                    Logger.Info("Display power state: Connected (On)");
+                    break;
+                case SessionSwitchReason.SessionLogoff:
+                    _currentPowerState = MonitorPowerState.Off;
+                    Logger.Info("Display power state: Logoff (Off)");
+                    break;
+                case SessionSwitchReason.SessionLogon:
+                    _currentPowerState = MonitorPowerState.On;
+                    Logger.Info("Display power state: Logon (On)");
+                    break;
+            }
+            if (previousState != _currentPowerState) { _lastStateChangeTime = DateTime.UtcNow; }
+        }
+
         public void SetPowerState(MonitorPowerState state)
         {
             if (_currentPowerState != state)
@@ -235,7 +271,11 @@ namespace WinEcoSensor.Common.Monitoring
         {
             if (_disposed) return;
             _disposed = true;
-            try { SystemEvents.PowerModeChanged -= OnPowerModeChanged; }
+            try
+            {
+                SystemEvents.PowerModeChanged -= OnPowerModeChanged;
+                SystemEvents.SessionSwitch -= OnSessionSwitch;
+            }
             catch (Exception ex) { Logger.Debug("Error disposing display monitor", ex); }
         }
     }
